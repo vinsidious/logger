@@ -15,6 +15,14 @@ export enum LogLevel {
   Time = 'Time'
 }
 
+const LogLevelToColor = {
+  [LogLevel.Debug]: 'grey',
+  [LogLevel.Info]: 'cyan',
+  [LogLevel.Warn]: 'yellow',
+  [LogLevel.Error]: 'red',
+  [LogLevel.Time]: 'green'
+}
+
 export class Logger {
   private readonly TRANSFORMERS = [
     this.colorizeDates,
@@ -86,7 +94,7 @@ export class Logger {
   private colorizeNumbers(str: any) {
     if (hasColor(str)) return str
     if (!_.isString(str) && !_.isNumber(str)) return str
-    return _.toString(str).replace(matchers.NUMBER, chalk.bold.magenta(`$1`))
+    return _.toString(str).replace(matchers.NUMBER, chalk.bold.cyan(`$1`))
   }
 
   private colorizeObject(obj: any) {
@@ -113,7 +121,13 @@ export class Logger {
         arg
       )
     )
-    console.log(chalk.dim.yellow(`[${this.name}]`), chalk.dim(`${logLevel}:`), ...args)
+    const logLevelColor = LogLevelToColor[logLevel]
+    console.log(
+      chalk.dim(`[${this.name}]`),
+      // Well, this is embarrassingly hideous...
+      (chalk.dim as any)[logLevelColor](`${logLevel}:`),
+      ...args
+    )
   }
 }
 
