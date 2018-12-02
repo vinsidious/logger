@@ -4,6 +4,9 @@ import isPromise from 'is-promise'
 // @ts-ignore
 import jsome from 'jsome'
 import _ from 'lodash'
+import moment from 'moment-timezone'
+import onFinished from 'on-finished'
+import prettyMs from 'pretty-large-ms'
 
 import * as matchers from './matchers'
 
@@ -22,6 +25,8 @@ const LogLevelToColor = {
   [LogLevel.Error]: 'red',
   [LogLevel.Time]: 'green'
 }
+
+const TIMESTAMP_FORMAT = 'HH:mm:ss'
 
 export class Logger {
   private readonly TRANSFORMERS = [
@@ -56,20 +61,62 @@ export class Logger {
     process.env.DEBUG && this.log(LogLevel.Time, key, `(${chalk.bold.green(formattedTime)})`)
   }
 
-  public debug(...args: any[]) {
+  public debug = (...args: any[]) => {
     process.env.DEBUG && this.log(LogLevel.Debug, ...args)
   }
 
-  public error(...args: any[]) {
+  public error = (...args: any[]) => {
     this.log(LogLevel.Error, ...args)
   }
 
-  public info(...args: any[]) {
+  public info = (...args: any[]) => {
     this.log(LogLevel.Info, ...args)
   }
 
-  public warn(...args: any[]) {
+  public warn = (...args: any[]) => {
     this.log(LogLevel.Warn, ...args)
+  }
+
+  public request = (req: any, res: any, next: any) => {
+    const { method, url, body, params } = req
+    const startMs = Date.now()
+
+    let paramLogging = []
+
+    if (!_.isEmpty(params)) paramLogging.push(params)
+    if (!_.isEmpty(body)) paramLogging.push(body)
+
+    const methodAndUrl = `${chalk.dim.bold(method)} ${url}`
+
+    const filteredParams = _.reject(
+      paramLogging,
+      // Please, for the love of God, don't log this fucker out.
+      obj => _.get(obj, 'operationName') === 'IntrospectionQuery'
+    )
+
+    _.forEach(filteredParams, (param, i) => {
+      if (_.has(param, 'operationName') && _.has(param, 'query')) {
+        const query = param.query
+        filteredParams[i]['query'] = query
+          .replace(/\n/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      }
+    })
+
+    // Log out at the start of the request
+    this.info(`${methodAndUrl}`, ...filteredParams)
+
+    onFinished(res, () => {
+      const durationMs = Date.now() - startMs
+      const { statusCode } = res
+      const colorizedStatusCode = statusCode < 400 ? chalk.green(statusCode) : chalk.red(statusCode)
+      this.info(
+        `${methodAndUrl} - ${colorizedStatusCode} - ${chalk.bold.dim(prettyMs(durationMs))}`
+      )
+    })
+
+    next()
   }
 
   private colorizeBooleans(str: any) {
@@ -124,6 +171,7 @@ export class Logger {
     const logLevelColor = LogLevelToColor[logLevel]
     console.log(
       chalk.dim(`[${this.name}]`),
+      chalk.dim(moment().format(TIMESTAMP_FORMAT)),
       // Well, this is embarrassingly hideous...
       (chalk.dim as any)[logLevelColor](`${logLevel}:`),
       ...args
